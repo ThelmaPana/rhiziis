@@ -1,5 +1,5 @@
 #--------------------------------------------------------------------------#
-# Project: visiis_rhizaria
+# Project: rhiziis
 # Script purpose: Generate a calibration set for Rhizaria
 # Date: 22/08/2022
 # Author: Thelma Panaïotis

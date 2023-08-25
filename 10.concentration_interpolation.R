@@ -1,5 +1,5 @@
 #--------------------------------------------------------------------------#
-# Project: visiis_rhizaria
+# Project: rhiziis
 # Script purpose: Compute Rhizaria concentration and interpolate transects
 # Date: 18/09/2022
 # Author: Thelma Panaïotis

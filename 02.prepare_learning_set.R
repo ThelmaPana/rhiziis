@@ -1,5 +1,5 @@
 #--------------------------------------------------------------------------#
-# Project: visiis_copepoda
+# Project: rhiziis
 # Script purpose: Prepare a learning set from validated images to train a CNN classifier
 # Date: 24/05/2022
 # Author: Thelma Panaïotis
