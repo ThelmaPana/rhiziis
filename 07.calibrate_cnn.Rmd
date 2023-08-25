@@ -1,0 +1,482 @@
+---
+title: "Calibrate CNN predictions for Rhizaria"
+author: "Thelma Panaiotis"
+date: "25/08/2022"
+output: 
+  html_document: 
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    collapsed: false
+    fig_width: 10
+    fig_height: 8 
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+#library(reticulate)
+library(grid)
+library(gridExtra)
+library(scales)
+library(arrow)
+library(googlesheets4)
+gs4_auth(use_oob = TRUE)
+1
+
+ss <- "https://docs.google.com/spreadsheets/d/100Hmfx9BVTFtBzw4pUETj6m3I4KjpibGvuRvDEVRYC8/edit?usp=sharing"
+
+```
+
+## Prepare data
+
+Read predictions and scores of calibration data
+
+```{r read_preds}
+# Read taxo match to change EcoTaxa names to nice names
+tc <- read_sheet(ss)
+
+# True classification
+df_true <- read_parquet("data/rhizaria_calibration_data.parquet") %>% 
+  select(object_id = orig_id, classif_id_1) %>% 
+  left_join(tc %>% select(classif_id_1, y_true = new_taxon)) %>% 
+  select(-classif_id_1)
+
+# Predictions
+df_pred <- read_tsv("data/ecotaxa_rhizaria_calibration.tsv", comment = "[") %>% select(object_id, y_pred = object_annotation_category, score = object_cnn_score)
+
+# Join truth and predictions
+df <- left_join(df_true, df_pred)
+
+```
+
+Within each taxon, order by score and compute cumulative error as well as rank.
+
+```{r rank}
+calib_preds <- df %>% 
+  # Group by taxon
+  group_by(y_pred) %>% 
+  # Sort by score
+  arrange(score) %>% 
+  # Compute cumulative error in % and rank in % 
+  mutate(
+    error = y_true != y_pred,
+    cum_error = cumsum(error),
+    nb_error = max(cum_error),
+    cum_error = ifelse(nb_error>0, cum_error/nb_error, 1), # Treat cases of zero division when all objects are correctly predicted
+    percent_rank=1:n()/n()
+  ) %>% 
+  ungroup() %>% 
+  # Count objects per true class
+  add_count(y_true) %>% 
+  select(-nb_error)
+```
+
+
+## Inspect data
+
+Count objects in each true and predicted class and plot them
+
+```{r counts_y_true}
+counts_y_true <- calib_preds %>% 
+  count(y_true) %>% 
+  arrange(desc(n)) %>% 
+  mutate(y_true = fct_inorder(y_true))
+
+counts_y_true %>% 
+  ggplot() +
+  geom_col(aes(x = y_true, y = n, fill = n > 10)) +
+  scale_y_log10() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
+  labs(title = "Composition of calibration set")
+```
+
+*`r sum(counts_y_true$n < 10)` classes have fewer than 10 objects: computing a threshold for theses classes will be difficult.*
+
+```{r counts_y_pred}
+counts_y_pred <- calib_preds %>% 
+  count(y_pred) %>% 
+  arrange(desc(n)) %>% 
+  mutate(y_pred = fct_inorder(y_pred))
+  
+counts_y_pred %>% 
+  ggplot() +
+  geom_col(aes(x = y_pred, y = n, fill = n > 10)) +
+  scale_y_log10() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
+  labs(title = "Predictions in calibration set")
+```
+
+*More objects are predicted in plankton classes than the ones in true classes: the classifier has a good recall, and the calibration step will improve precision.*
+
+Now look at scores distribution for each taxon. 
+
+```{r scores_dist}
+calib_preds %>% 
+  ggplot() +
+  geom_density(aes(x = score)) +
+  facet_wrap(~y_pred, scales = "free_y") +
+  labs(title = "Score distribution for predicted classes")
+```
+
+
+## Global view for thresholding
+
+For each taxon plot cumulative error VS prediction score. 
+
+```{r score_distribution}
+calib_preds %>% 
+  ggplot() +
+  geom_density(aes(x = score)) +
+  facet_wrap(~y_pred, scales = "free_y") +
+  labs(title = "Score distribution")
+```
+
+```{r cum_error_score}
+calib_preds %>% 
+  ggplot() +
+  geom_path(aes(x = score, y = cum_error)) +
+  facet_wrap(~y_pred) +
+  scale_color_continuous(trans = "log1p") +
+  labs(title = "Cumulative error VS prediction scores for pred classes")
+```
+
+And plot cumulative error VS object rank. 
+
+```{r cum_error_rank}
+calib_preds %>% 
+  ggplot() +
+  geom_path(aes(x = percent_rank, y = cum_error)) +
+  facet_wrap(~y_pred) +
+  scale_color_continuous(trans = "log1p") +
+  labs(title = "Cumulative error VS prediction rank for pred classes")
+```
+
+For many taxa, cutting at a cumulative error of 90% will keep the major parts of the objects. Let’s now compute a threshold score for each taxon and see what proportion of data will be kept. 
+
+
+## Thresholding by taxon
+
+Make a list of taxa.
+```{r taxa}
+taxa <- calib_preds %>% pull(y_pred) %>% unique() %>% sort()
+taxa
+```
+
+There are `r length(taxa)` taxa to compute threshold for.
+
+Define a base error threshold and prepare a tibble to store computed thresholds. 
+
+```{r thresholds_df}
+error_threshold_base <- 0.9
+
+taxa_threshold <- tibble(
+  taxa, 
+  error_threshold = NA,
+  score_threshold = NA,
+  keep_threshold = NA,
+  )
+
+```
+
+For each taxon, start with an error threshold of 90%. Plot cumulative error VS score and VS rank and compute the score threshold associated with this error threshold and the proportion of objects that will be kept. 
+
+
+```{r}
+plot_threshold <- function(taxon, error_threshold = 0.9){
+  #' Plot cumulative error VS score and VS rank for a given error threshold.
+  #' Return the score threshold associated with this error threshold 
+  #' and the proportion of objects that will be kept.  
+  
+  calib_taxa <- calib_preds %>% 
+    filter(y_pred == taxon) %>% 
+    mutate(keep = cum_error >= error_threshold)
+  
+  # Compute associated score threshold and proportion of kept data. 
+  score_threshold <- calib_taxa %>% filter(keep) %>% slice(1) %>% pull(score)
+  keep_threshold <- calib_taxa %>% filter(keep) %>% slice(1) %>% pull(percent_rank)
+
+  # If error_threshold was set to 0, keep all objects
+  if (error_threshold == 0) {
+    score_threshold = 0
+    keep_threshold = 0
+  }
+  
+  # Number of true objects for this taxon
+  n <- nrow(calib_taxa)
+    
+  
+  if (n > 20000){ # if too many objects, do not plot 
+    plot <- NULL
+  } else {  
+    p1 <- calib_taxa %>% 
+      ggplot() +
+      geom_vline(aes(xintercept = score_threshold)) +
+      geom_label(aes(x = 1, y = 0, label = format(score_threshold, digits = 2)))
+    
+    p2 <- calib_taxa %>% 
+      ggplot() +
+      geom_vline(aes(xintercept = keep_threshold)) + 
+      geom_label(aes(x = 1, y = 0, label = str_c("Keep ", percent(1-keep_threshold, digits = 2), " of objects")))
+  
+    if (n < 1000){ # for few objects, plot points
+      p1 <- p1 + geom_point(aes(x = score, y = cum_error, colour = cum_error < error_threshold), show.legend = F)
+      p2 <- p2 + geom_point(aes(x = percent_rank, y = cum_error, colour = cum_error < error_threshold), show.legend = F)
+    } else { # else, plot a path
+      p1 <- p1 + geom_path(aes(x = score, y = cum_error, colour = cum_error < error_threshold), show.legend = F)
+      p2 <- p2 + geom_path(aes(x = percent_rank, y = cum_error, colour = cum_error < error_threshold), show.legend = F)
+    }
+  
+    # Make 2 plots side by side
+    plot <- grid.arrange(p1, p2, ncol=2, top = textGrob(paste0(taxon, " (n = ", n, ")"), gp=gpar(fontsize=18)))  
+  }
+  return(list(plot, score_threshold, keep_threshold))
+}
+```
+
+
+### Acantharea
+```{r Acantharea, echo=F}
+taxon <- "Acantharea"
+index <- which(taxa == taxon)
+error_threshold <- 0.9
+
+# Compute
+thr <- plot_threshold(taxon = taxon)
+
+# Fill the threshold dataframe
+taxa_threshold$error_threshold[index] <- error_threshold
+taxa_threshold$score_threshold[index] <- thr[[2]]
+taxa_threshold$keep_threshold[index] <- thr[[3]]
+```
+
+Ok for error threshold at 90%.
+
+### Acantharea_like
+
+```{r Acantharea_like, echo=F}
+taxon <- "Acantharea_like"
+index <- which(taxa == taxon)
+error_threshold <- 0.9
+
+# Compute
+thr <- plot_threshold(taxon = taxon)
+
+# Fill the threshold dataframe
+taxa_threshold$error_threshold[index] <- error_threshold
+taxa_threshold$score_threshold[index] <- thr[[2]]
+taxa_threshold$keep_threshold[index] <- thr[[3]]
+```
+
+### Acantharea_small
+
+```{r Acantharea_small, echo=F}
+taxon <- "Acantharea_small"
+index <- which(taxa == taxon)
+error_threshold <- 0.9
+
+# Compute
+thr <- plot_threshold(taxon = taxon, error_threshold = error_threshold)
+
+# Fill the threshold dataframe
+taxa_threshold$error_threshold[index] <- error_threshold
+taxa_threshold$score_threshold[index] <- thr[[2]]
+taxa_threshold$keep_threshold[index] <- thr[[3]]
+```
+
+
+### Arthracanthida
+
+```{r Arthracanthida, echo=F}
+taxon <- "Arthracanthida"
+index <- which(taxa == taxon)
+error_threshold <- 0.9
+
+# Compute
+thr <- plot_threshold(taxon = taxon, error_threshold = error_threshold)
+
+# Fill the threshold dataframe
+taxa_threshold$error_threshold[index] <- error_threshold
+taxa_threshold$score_threshold[index] <- thr[[2]]
+taxa_threshold$keep_threshold[index] <- thr[[3]]
+```
+
+
+### Aulacanthidae
+
+```{r Aulacanthidae, echo=F}
+taxon <- "Aulacanthidae"
+index <- which(taxa == taxon)
+error_threshold <- 0.9
+
+# Compute
+thr <- plot_threshold(taxon = taxon)
+
+# Fill the threshold dataframe
+taxa_threshold$error_threshold[index] <- error_threshold
+taxa_threshold$score_threshold[index] <- thr[[2]]
+taxa_threshold$keep_threshold[index] <- thr[[3]]
+```
+
+### Aulacanthidae_flat
+
+```{r Aulacanthidae_flat, echo=F}
+taxon <- "Aulancanthidae_flat"
+index <- which(taxa == taxon)
+error_threshold <- 0.9
+
+# Compute
+thr <- plot_threshold(taxon = taxon)
+
+# Fill the threshold dataframe
+taxa_threshold$error_threshold[index] <- error_threshold
+taxa_threshold$score_threshold[index] <- thr[[2]]
+taxa_threshold$keep_threshold[index] <- thr[[3]]
+```
+
+
+### Aulosphaeridae
+
+```{r Aulosphaeridae, echo=F}
+taxon <- "Aulosphaeridae"
+index <- which(taxa == taxon)
+error_threshold <- 0.9
+
+# Compute
+thr <- plot_threshold(taxon = taxon)
+
+# Fill the threshold dataframe
+taxa_threshold$error_threshold[index] <- error_threshold
+taxa_threshold$score_threshold[index] <- thr[[2]]
+taxa_threshold$keep_threshold[index] <- thr[[3]]
+```
+Ignore these.
+
+### Collodaria_colonial
+
+```{r Collodaria_colonial, echo=F}
+taxon <- "Collodaria_colonial"
+index <- which(taxa == taxon)
+error_threshold <- 0.9
+
+# Compute
+thr <- plot_threshold(taxon = taxon, error_threshold = error_threshold)
+
+# Fill the threshold dataframe
+taxa_threshold$error_threshold[index] <- error_threshold
+taxa_threshold$score_threshold[index] <- thr[[2]]
+taxa_threshold$keep_threshold[index] <- thr[[3]]
+```
+
+### Collodaria_like
+
+```{r Collodaria_like, echo=F}
+taxon <- "Collodaria_like"
+index <- which(taxa == taxon)
+error_threshold <- 0.9
+
+# Compute
+thr <- plot_threshold(taxon = taxon)
+
+# Fill the threshold dataframe
+taxa_threshold$error_threshold[index] <- error_threshold
+taxa_threshold$score_threshold[index] <- thr[[2]]
+taxa_threshold$keep_threshold[index] <- thr[[3]]
+```
+
+Ok for error threshold at 90%.
+
+
+### Collodaria_solitaryblack
+
+```{r Collodaria_solitaryblack, echo=F}
+taxon <- "Collodaria_solitaryblack"
+index <- which(taxa == taxon)
+error_threshold <- 0.9
+
+# Compute
+thr <- plot_threshold(taxon = taxon)
+
+# Fill the threshold dataframe
+taxa_threshold$error_threshold[index] <- error_threshold
+taxa_threshold$score_threshold[index] <- thr[[2]]
+taxa_threshold$keep_threshold[index] <- thr[[3]]
+```
+
+
+
+### Collodaria_solitaryglobule
+
+```{r Collodaria_solitaryglobule, echo=F}
+taxon <- "Collodaria_solitaryglobule"
+index <- which(taxa == taxon)
+error_threshold <- 0.9
+
+# Compute
+thr <- plot_threshold(taxon = taxon)
+
+# Fill the threshold dataframe
+taxa_threshold$error_threshold[index] <- error_threshold
+taxa_threshold$score_threshold[index] <- thr[[2]]
+taxa_threshold$keep_threshold[index] <- thr[[3]]
+```
+
+
+
+### Foraminifera
+
+```{r Foraminifera, echo=F}
+taxon <- "Foraminifera"
+index <- which(taxa == taxon)
+error_threshold <- 0.9
+
+# Compute
+thr <- plot_threshold(taxon = taxon, error_threshold = error_threshold)
+
+# Fill the threshold dataframe
+taxa_threshold$error_threshold[index] <- error_threshold
+taxa_threshold$score_threshold[index] <- thr[[2]]
+taxa_threshold$keep_threshold[index] <- thr[[3]]
+```
+
+
+
+
+
+### Spumellaria
+
+```{r Spumellaria, echo=F}
+taxon <- "Spumellaria"
+index <- which(taxa == taxon)
+error_threshold <- 0.9
+
+# Compute
+thr <- plot_threshold(taxon = taxon)
+
+# Fill the threshold dataframe
+taxa_threshold$error_threshold[index] <- error_threshold
+taxa_threshold$score_threshold[index] <- thr[[2]]
+taxa_threshold$keep_threshold[index] <- thr[[3]]
+```
+
+Ok for error threshold at 90%.
+
+## Thresholding summary 
+```{r summary}
+taxa_threshold <- taxa_threshold %>% 
+  #mutate(plankton = taxa %in% calibration_data$plankton_classes) %>% 
+  mutate(retained = 1 - keep_threshold) %>% 
+  mutate(usable = retained > 0.1)
+
+write_csv(taxa_threshold, file = "data/taxa_threshold_rhizaria.csv")
+
+taxa_threshold %>% 
+  arrange(-retained) %>% 
+  mutate(taxa = factor(taxa, levels = taxa)) %>% 
+  ggplot() +
+  geom_col(aes(x = taxa, y = retained)) +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
+  labs(title = "Proportion of retained objects")
+```
+

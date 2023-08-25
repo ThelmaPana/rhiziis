@@ -1,0 +1,59 @@
+classif_id_1,new_taxon,group,use
+Acantharea,Acantharea,Acantharea,1
+Annelida,NA,NA,NA
+Appendicularia,NA,NA,NA
+Arthracanthida,Arthracanthida,Acantharea,1
+Aulacanthidae,Aulacanthidae,Phaeodaria,1
+Aulosphaeridae,Aulosphaeridae,Phaeodaria,1
+Bacillariophyceae,NA,NA,NA
+Cannosphaeridae,NA,NA,NA
+Chaetognatha,NA,NA,NA
+Cnidaria<Metazoa,NA,NA,NA
+Copepoda,NA,NA,NA
+Crustacea,NA,NA,NA
+Ctenophora<Metazoa,NA,NA,NA
+Doliolida,NA,NA,NA
+Eumalacostraca,NA,NA,NA
+Foraminifera,Foraminifera,NA,0
+Pelagia noctiluca,NA,NA,NA
+Rhizaria,NA,NA,NA
+Rhopalonematidae,NA,NA,NA
+Siphonophorae,NA,NA,NA
+Spumellaria,Spumellaria,NA,0
+budding<Collodaria,Collodaria_colonial_budding,Collodaria (colonial),1
+colonial<Collodaria,Collodaria_colonial,Collodaria (colonial),1
+dark<colonial,Collodaria_colonial,Collodaria (colonial),1
+darksphere,NA,NA,NA
+detritus,detritus,NA,0
+egg<other,NA,NA,NA
+ephyra<Scyphozoa,NA,NA,NA
+house,NA,NA,NA
+leg<Coelodendridae,Coelodendridae_leg,NA,0
+leg<Collodaria,Collodaria_solitary_leg,NA,0
+like<Acantharea,Acantharea_like,NA,0
+like<Collodaria,Collodaria_like,NA,0
+noise,NA,NA,NA
+other<living,Rhizaria,NA,0
+othertocheck,NA,NA,NA
+proto,Collodaria_colonial_proto,Collodaria (colonial),1
+puff,NA,NA,NA
+small<Acantharea,Acantharea_small,Acantharea,1
+solitaryblack,Collodaria_solitaryblack,Collodaria (solitary),1
+solitaryblack-like,Collodaria_solitaryblack-like,Collodaria (solitary),1
+solitaryglobule,Collodaria_solitaryglobule,Collodaria (solitary),1
+spherical,Collodaria_colonial_spherical,Collodaria (colonial),1
+t002,NA,NA,NA
+t003,Aulacanthidae_flat,Phaeodaria,1
+t004,NA,NA,NA
+t007,NA,NA,NA
+t008,NA,NA,NA
+t009,NA,NA,NA
+t010,NA,NA,NA
+t015,NA,NA,NA
+t019,NA,NA,NA
+t020,NA,NA,NA
+tentacle<Cnidaria,NA,NA,NA
+with-large-vacuole,Collodaria_solitaryblack_with-vacuole,Collodaria (solitary),1
+with-streak,Collodaria_colonial_with-streak,NA,0
+with-vacuole<Foraminifera,Foraminifera_with-vacuole,NA,0
+with-vacuole<solitaryblack,Collodaria_solitaryblack_with-vacuole,Collodaria (solitary),1
