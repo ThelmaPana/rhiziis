@@ -22,7 +22,6 @@ Laboratoire d'Océanographie de Villefranche (UMR 7093)
 
 -   `figures` figures for the paper
 
-
 ### Scripts
 
 Scripts order is self-explanatory.
@@ -65,9 +64,9 @@ Start here to reproduce the analyses with the data shared on XXX.
 
 #### External data
 
--   Plankton data `ecotaxa_export_all_rhizaria_cc.tsv` is shared on XXX.
+-   Plankton data `ecotaxa_export_all_rhizaria_cc.tsv` is shared on SEANOE: <https://www.seanoe.org/data/00851/96266/>.
 
--   Environmental data `isiis_images_env.parquet` is shared on XXX.
+-   Environmental data `isiis_images_env.parquet` is shared on SEANOE: <https://www.seanoe.org/data/00851/96266/>.
 
 #### Local data
 
