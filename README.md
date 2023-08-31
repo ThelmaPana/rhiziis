@@ -71,8 +71,8 @@ Start here to reproduce the analyses with the data shared on XXX.
 
 #### Local data
 
--   `data/taxa_threshold_rhizaria.csv` Score thresholds for each taxa.
+-   `data_git/taxa_threshold_rhizaria.csv` Score thresholds for each taxa.
 
--   `data/taxonomy_match.csv` Table of taxonomy matches to rename objects.
+-   `data_git/taxonomy_match.csv` Table of taxonomy matches to rename objects.
 
--   `data/08.keypoint_annotations.csv` Keypoint tool annotations.
+-   `data_git/08.keypoint_annotations.csv` Keypoint tool annotations.
