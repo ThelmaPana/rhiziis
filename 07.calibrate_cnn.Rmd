@@ -469,7 +469,7 @@ taxa_threshold <- taxa_threshold %>%
   mutate(retained = 1 - keep_threshold) %>% 
   mutate(usable = retained > 0.1)
 
-write_csv(taxa_threshold, file = "data/taxa_threshold_rhizaria.csv")
+write_csv(taxa_threshold, file = "data_git/07.taxa_threshold_rhizaria.csv")
 
 taxa_threshold %>% 
   arrange(-retained) %>% 

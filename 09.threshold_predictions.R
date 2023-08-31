@@ -40,7 +40,7 @@ df <- read_delim(
 
 
 # Read thresholds
-thr <- read_csv("data/taxa_threshold_rhizaria.csv") %>% select(taxon = taxa, score_threshold)
+thr <- read_csv("data_git/07.taxa_threshold_rhizaria.csv") %>% select(taxon = taxa, score_threshold)
 
 
 ## Rename taxa ----
@@ -60,7 +60,7 @@ if (overwrite_tree){
   # Read taxo match
   tc <- read_sheet(ss) %>% select(classif_id_1, new_taxon, group, use)
 } else { # otherwise, read the CSV file containing taxonomy match
-  tc <- read_csv("data/taxonomy_match.csv")
+  tc <- read_csv("data_git/taxonomy_match.csv")
 }
 
 # Keep only selected taxa

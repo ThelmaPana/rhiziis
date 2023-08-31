@@ -37,4 +37,4 @@ for (file in json_files){
 ## Rename columns and save data ----
 #--------------------------------------------------------------------------#
 key_points <- key_points %>% select(orig_id, taxon, x1 = tooltips.x, y1 = tooltips.y, x2 = tooltips.x.1, y2 = tooltips.y.1)
-write_csv(key_points, file = "data/08.keypoint_annotations.csv")
+write_csv(key_points, file = "data_git/08.keypoint_annotations.csv")
