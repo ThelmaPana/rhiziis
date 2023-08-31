@@ -12,6 +12,8 @@ Laboratoire d'Océanographie de Villefranche (UMR 7093)
 
 -   `data` where data lives
 
+-   `data_git` where data hosted on github lives
+
 -   `figures` figures for the paper
 
 -   `lib` useful stuff
